@@ -3,6 +3,7 @@ import re
 from collections import Counter
 PATTERN = '''[ ,.:;"']+'''
 
+
 class SimpleTokenizer():
     def __init__(self) -> None:
         
@@ -20,7 +21,7 @@ class SimpleTokenizer():
                 corpus.append(self.remove_non_ascii(text))
         return corpus
 
-    def tokenize_corpus(self, corpus):
+    def seperate_words(self, corpus):
         all_tokens=[]
         for doc in corpus:
             tokens = re.split(PATTERN, doc)
@@ -35,101 +36,72 @@ class SimpleTokenizer():
 
     def encode(self, path):
         corpus = self.read_file(path)
-        tokens = self.tokenize_corpus(corpus)
+        tokens = self.seperate_words(corpus)
         self.save(tokens, './output.dict')
 
+class BPETokenizer(SimpleTokenizer):
+    def __init__(self) -> None:
 
-class BPETokenizer():
-    def __init__(self, path='test', full=0) -> None:
-        self.pattern = r'[ ,.:;"’]+'
 
-        self.tokens = self.get_all_tokens(path,full)
-        self.tokens = self.add_end_of_word(self.tokens)
 
-        self.word_freq = self.calc_freq()
-        self.splitted_word = self.split_words()
-        self.vocabulary = self.get_vocabulary()
-        # self.pair_count = self.calculate_pair_freq()
-        self.merges={}
-        del self.tokens
+        # self.word_freq = self.calc_freq(tokens)
+        # self.splitted_word = self.split_words(self.word_freq)
+        # self.vocabulary = self.get_alphabets()
+        self.merges = {}
+        self.vocabulary = []
+        self.splitted_word = {}
+        self.word_freq = {}
+        # del self.tokens
         # self.training()
 
-    def get_training_corpus(self, path, full):
+    def read_file(self, path, portion=0.5):
         corpus =[]
         with open(path,'r', encoding='utf-8') as file:
             lines = file.readlines()
-            n=len(lines)
-            if full==0:
-                lines = lines[int(n/2):]
-            for line in lines:
-                line = json.loads(line.strip())
-
-                corpus.extend([line['title'], line['abstract']])
-        return corpus
-    
-    def get_testing_corpus(self, path, full=0):
-        corpus =[]
-        with open(path,'r', encoding='utf-8') as file:
-            lines = file.readlines()
-            n=len(lines)
-            if full==0:
-                lines = lines[:int(n/2)]
-            for line in lines:
-                line = json.loads(line.strip())
-
-                corpus.extend([line['title'], line['abstract']])
-        return corpus
-    
-    def get_all_tokens(self, path, full, testing=0):
-        if testing==0:
-            corpus = self.get_training_corpus(path, full)
-        else:
-            corpus = self.get_testing_corpus(path, full)
-        all_tokens=[]
-        for line in corpus:
-            tokens = re.split(self.pattern, line)
             
-            # Filter out empty tokens
-            tokens = [token for token in tokens if token]
-            all_tokens.extend(tokens)
 
-        return all_tokens
+            lines = lines[int(len(lines)*portion):]
+
+            for line in lines:
+                doc = json.loads(line.strip())
+                text = doc['title'] +'. ' + doc['abstract']
+                corpus.append(self.remove_non_ascii(text))
+        return corpus
     
     def add_end_of_word(self, tokens):
         for i in range(len(tokens)):
             tokens[i] = tokens[i]+ "Ġ"
         return tokens
     
-    def calc_freq(self):
+    def calc_freq(self, tokens):
         token_count = Counter()
-
-        for token in self.tokens:
+        for token in tokens:
             token_count[token]+=1
         
         return token_count
     
-    def get_vocabulary(self):
-        vocabulary = []
-
+    def split_words(self, words):
+        splitted_word = {}
+        for word in words:
+            splitted_word[word] = [ch for ch in word]
+        
+        return splitted_word
+    
+    def get_alphabets(self):
+        # vocabulary = []
         # for word in self.word_freq.keys():
         #     for letter in word:
         #         if letter not in vocabulary:
         #             vocabulary.append(letter)
+
         vocabulary =set()
         for _, split in self.splitted_word.items():
-            vocabulary.union(split)
+            vocabulary.update(split)
 
         vocabulary = list(vocabulary)
         vocabulary.sort()
         return vocabulary
     
-    def split_words(self):
-        splitted_word = {}
-        for word in self.word_freq.keys():
-            splitted_word[word] = [ch for ch in word]
-        
-        return splitted_word
-
     def calculate_pair_freq(self):
         pair_count = Counter()
 
@@ -140,8 +112,7 @@ class BPETokenizer():
                 continue
 
             for i in range(n -1):
-                pair = (charaters[i], charaters[i+1])
-                pair_count[pair] += freq
+                pair_count[(charaters[i], charaters[i+1])] += freq
             
         return pair_count
           
@@ -168,24 +139,32 @@ class BPETokenizer():
         
         return 1
     
-    def training(self, k=500):
-        for i in range(k):
+    def first_itr(self, path):
+        corpus = self.read_file(path)
+        words = self.seperate_words(corpus)
+        words = self.add_end_of_word(words)
+        self.word_freq = self.calc_freq(words)
+        self.splitted_word = self.split_words(self.word_freq.keys())
+        self.vocabulary = self.get_alphabets()
+        
+    def train(self, vocab_size=500):
+        n= len(self.vocabulary)
+        for i in range(n,vocab_size):
             pair_frequencies = self.calculate_pair_freq()
             if len(pair_frequencies) ==0:
                 break
             best_pair, count = self.get_best_pair(pair_frequencies)
             self.merges[best_pair] = best_pair[0]+best_pair[1]
             self.vocabulary.append(self.merges[best_pair])
+            self.merges_best_pair(best_pair)
             print(best_pair, count, len(self.vocabulary))
-            self.splitted_word = self.merges_best_pair(best_pair)
         
         return
     
-    def run_test(self):
-        tokens = self.get_all_tokens(self.path, self.full, testing=1)
-        tokens = self.add_end_of_word(tokens)
-        splitted_words = [[ch for ch in token]  for token in tokens if token]
-        # print(splitted_words)
+    def encode_text(self, text):
+        words = self.seperate_words([text])
+        words = self.add_end_of_word(words)
+        splitted_words = self.split_words(list(set(words)))
 
         for pair, merged in self.merges.items():
             for i, split in enumerate(splitted_words):
@@ -198,7 +177,9 @@ class BPETokenizer():
                     j+=1
                 splitted_words[i]=split
         
-        return sum(splitted_words, [])
+        tokens =  sum(splitted_words, [])
+        return list(set(tokens))
+
 
 class WordPieceTokenizer():
     def __init__(self, path='test', full=0) -> None:
