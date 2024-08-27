@@ -1,24 +1,43 @@
 import json
 import re
 from collections import Counter
+PATTERN = '''[ ,.:;"']+'''
 
-def SimpleTokenizer(path):
-    corpus =[]
-    with open(path,'r', encoding='utf-8') as file:
-        for line in file:
-            line = json.loads(line.strip())
-            corpus.extend([line['title'], line['abstract']])
-            
-    all_tokens=[]
-    pattern = r'[ ,.:;"’]+'
-    for line in corpus:
-        tokens = re.split(pattern, line)
-        tokens = [token for token in tokens if token]
-        all_tokens.extend(tokens)
+class SimpleTokenizer():
+    def __init__(self) -> None:
+        
+        pass
 
-    tokens = list(set(all_tokens))
-    with open('output.dict','w') as file:
-        file.write('\n'.join(tokens))
+    def remove_non_ascii(self, text):
+        return text.encode('ascii',errors='ignore').decode()
+
+    def read_file(self, path):
+        corpus =[]
+        with open(path,'r', encoding='utf-8') as file:
+            for doc in file:
+                doc = json.loads(doc.strip())
+                text = doc['title'] +'. ' + doc['abstract']
+                corpus.append(self.remove_non_ascii(text))
+        return corpus
+
+    def tokenize_corpus(self, corpus):
+        all_tokens=[]
+        for doc in corpus:
+            tokens = re.split(PATTERN, doc)
+            tokens = [token for token in tokens if token]
+            all_tokens.extend(tokens)
+        
+        return all_tokens
+    
+    def save(self, data , path):
+        with open(path,'w') as file:
+            file.write('\n'.join(data))
+
+    def encode(self, path):
+        corpus = self.read_file(path)
+        tokens = self.tokenize_corpus(corpus)
+        self.save(tokens, './output.dict')
+
 
 class BPETokenizer():
     def __init__(self, path='test', full=0) -> None:
