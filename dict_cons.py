@@ -17,7 +17,7 @@ class SimpleTokenizer():
         with open(path,'r', encoding='utf-8') as file:
             for doc in file:
                 doc = json.loads(doc.strip())
-                text = doc['title'] +'. ' + doc['abstract']
+                text = doc['title'] +' ' + doc['abstract']
                 corpus.append(self.remove_non_ascii(text))
         return corpus
 
@@ -30,15 +30,19 @@ class SimpleTokenizer():
         
         return all_tokens
     
-    def save(self, data , path):
+    def save(self, data , path='./output.dict'):
         with open(path,'w') as file:
             file.write('\n'.join(data))
 
-    def encode(self, path):
+    def encode(self, path='./output.dict'):
         corpus = self.read_file(path)
         tokens = self.seperate_words(corpus)
-        self.save(tokens, './output.dict')
-
+        self.save(list(set(tokens)), path)
+    
+    def encode_text(self,text):
+        tokens = self.seperate_words([text])
+        return tokens
+    
 class BPETokenizer(SimpleTokenizer):
     def __init__(self) -> None:
 
