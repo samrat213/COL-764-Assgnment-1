@@ -3,3 +3,14 @@ cord19-trec_covid-qrels
 cord19-trec_covid-queries
 output.dict
 indexfile.idx
+indexfile.dict
+BPE_progress.png
+indexfile -bpe.idx
+indexfile bpe.dict
+output_bpe.dict
+output_simple.dict
+output.dict
+test
+train_data-20240902T162302Z-001.zip
+WPE_progress.png
+__pycache__/dict_cons.cpython-39.pyc
