@@ -3,12 +3,12 @@ from collections import Counter, defaultdict
 import json
 import pickle
 import sys
-from .dict_cons import SimpleTokenizer, BPETokenizer, WordPieceTokenizer
+from dict_cons import SimpleTokenizer, BPETokenizer, WordPieceTokenizer
 import time
 
 class Retrival():
-    def __init__(self, encoder, index_file_path='./indexfile.idx') -> None:
-        self.encoder = encoder
+    def __init__(self, index_file_path='./indexfile.idx') -> None:
+        # self.encoder = encoder
         # # self.IDF = {}
         self.inverted_index = {}
         self.doc_to_index={}
@@ -27,13 +27,22 @@ class Retrival():
         ret = self.read_indexfile(path)
         self.inverted_index = ret['inverted_index']
         self.doc_to_index = ret['doc_to_index']
-        self.IDF = ret['IDF']
+        self.IDF = Counter(ret['IDF'])
         self.index_to_doc=ret['index_to_doc']
         self.number_doc = ret['number_docs']
         self.normalization_term = ret['normalization_value']
-        if type(self.encoder)!=SimpleTokenizer:
+        if ret['tokenizer']==0:
+            self.encoder = SimpleTokenizer()
+        elif ret['tokenizer']==1:
+            self.encoder = BPETokenizer()
             self.encoder.merges = ret['merges']
+        elif ret['tokenizer']==2:
+            self.encoder = WordPieceTokenizer()
             self.encoder.vocabulary = ret['vocabulary']
+
+        # if type(self.encoder)!=SimpleTokenizer:
+        #     self.encoder.merges = ret['merges']
+        #     self.encoder.vocabulary = ret['vocabulary']
 
     def process_doc(self, doc):
         text = doc['title'] +' ' + doc['abstract']
@@ -46,9 +55,9 @@ class Retrival():
         text = self.encoder.remove_non_ascii(text)
         tokens = self.encoder.encode_text(text)
         
-        token_count = Counter()
-        for token in tokens:
-            token_count[token]+=1
+        token_count = Counter(tokens)
+        # for token in tokens:
+        #     token_count[token]+=1
             
         return set(tokens), token_count
     
@@ -142,30 +151,34 @@ class Retrival():
     
     def run_query(self, query):
         tokens, token_freq = self.process_query(query)
+        similarity = []
+        all_tokens = set(self.inverted_index.keys())
+        tokens = all_tokens.intersection(tokens)
         query_tf_idf, query_normalization_term = self.tf_idf_query(token_freq)
         
-        similarity = []
-        # all_tokens = set(self.tf_idf.keys())
-        # tokens = all_tokens.intersection(tokens)
-
         for doc_index in range(self.number_doc):
             sim = 0.0
             
             for token in tokens:
                 # print(token, doc_index)
+                # if token in 
                 if doc_index in self.inverted_index[token].keys():
                     sim += query_tf_idf[token] * self.inverted_index[token][doc_index]
             sim = sim/(query_normalization_term * self.normalization_term[doc_index])
-            print(doc_index, sim)
+            # if sim>0.1:
+            #     print(sim)
+            # print(sim)
+            # print(doc_index, sim)
+
             similarity.append([query['query_id'], 0, self.index_to_doc[doc_index], sim])
             
-        similarity = sorted(similarity, key=lambda item: item[1], reverse=True)
+        similarity = sorted(similarity, key=lambda item: item[3], reverse=True)
         return similarity[:100]
     
     def save(self, data , path):
         with open(path,'w') as file:
             for line in data:
-                file.write('\t'.join(line))
+                file.write('\t'.join(map(str, line)))
                 file.write('\n')
 
     def retrieve(self, path = './cord19-trec_covid-queries', output_path = './resultfile'):
@@ -174,57 +187,63 @@ class Retrival():
         # start
         with open(path,'r', encoding='utf-8') as file:
             for query in file:
+                print(n)
+                n+=1
                 doc = json.loads(query.strip())
-                result = self.run_query(doc)
+                ret.extend(self.run_query(doc))
 
-        self.save(data=result, path=output_path)
-        return result
+        self.save(data=ret, path=output_path)
+
+        return ret[1:], n
     
     def read_qrel(self, path = 'cord19-trec_covid-qrels'):
         self.result_gt = defaultdict(set)
         with open(path,'r', encoding='utf-8') as file:
             for rel in file:
                 doc = json.loads(rel.strip())
-                if doc['relevance']==0:
-                    self.result_gt[doc['query_id']]['irrelevent'].add(self.doc_to_index(doc['doc_id']))
-                else:
-                    self.result_gt[doc['query_id']]['relevent'].add(self.doc_to_index(doc['doc_id']))
+                if doc['relevance']!=0:
+                    self.result_gt[doc['query_id']].add(doc['doc_id'])
 
     def parse_result(self,result):
         ret = defaultdict(set)
 
         for entry in result:
-            ret[entry[0]].add(entry[2])
+            ret[str(entry[0])].add(entry[2])
 
         return ret
     
 # F = 2RP/(R+P)
-    def score(self, relevent, irrelevent, retrieved, k=10):
-        relevent = set(list(relevent)[:k])
-        irrelevent = set(list(irrelevent)[:k])
-        retrieved = set(list(retrieved)[:k])
+    def score(self, relevent, retrieved, k=10):
+
+        retrieved = set(retrieved[:k])
+                        
         relevent_and_retrieved = len(retrieved.intersection(relevent))
-        precision = relevent_and_retrieved/len(retrieved)
+        precision = relevent_and_retrieved/k
         recall = relevent_and_retrieved/len(relevent)
-        F = 2*recall*precision/(recall+precision)
+        if recall==0 and precision == 0:
+            F=0
+        else:
+            F = 2*recall*precision/(recall+precision)
+        # print(k, len(retrieved.intersection(relevent)), F)
         return F
 
     def calculate_score(self, result):
         scores={10:0, 20:0, 50:0, 100:0}
         for query_id in result.keys():
-            relevent = self.result_gt[query_id]['relevent']
-            irrelevent = self.result_gt[query_id]['irrrelevent']
-            retrieved = result[query_id]
-            scores[10] += self.score(relevent, irrelevent, retrieved, 10)
-            scores[20] += self.score(relevent, irrelevent, retrieved, 20)
-            scores[50] += self.score(relevent, irrelevent, retrieved, 50)
-            scores[100] += self.score(relevent, irrelevent, retrieved, 100)
+            print(scores)
+            relevent = self.result_gt[query_id]
+            retrieved = list(result[query_id])
+            # print(retrieved)
+            scores[10] += self.score(relevent, retrieved, 10)
+            scores[20] += self.score(relevent, retrieved, 20)
+            scores[50] += self.score(relevent, retrieved, 50)
+            scores[100] += self.score(relevent, retrieved, 100)
         
         n=len(result.keys())
 
-        score = {k:v/n for k,v in score.items()}
+        scores = {k:v/n for k,v in scores.items()}
 
-        return score
+        return scores
 
 
 
@@ -236,8 +255,9 @@ if __name__=="__main__":
     # print(sys.argv)
     start_time = time.time()
     obj = Retrival(index_file_path=index_file)
-    ret = obj.retrieve(path=query_file, output_path=result_file)
-    print('Efficiency: ', (time.time()-start_time)/100)
+    print('-----Parameter Loaded -----')
+    ret, n = obj.retrieve(path=query_file, output_path=result_file)
+    print('Efficiency: ', (time.time()-start_time)/n)
 
     obj.read_qrel('./cord19-trec_covid-qrels')
     our_result = obj.parse_result(ret)

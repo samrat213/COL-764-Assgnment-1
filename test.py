@@ -5,10 +5,19 @@ from collections import Counter,defaultdict
 import pickle
 import time
 import matplotlib.pyplot as plt
+import threading
 
 # from A1.dict_cons import SimpleTokenizer 
 PATTERN = '''[ ,.:;"']+'''
 start_time = time.time()
+
+def save_pickel(data, path):
+    with open(path, 'wb') as f:
+        pickle.dump(data, f)
+
+def save_checkpoint(data, path):
+    download_thread = threading.Thread(target=save_pickel, name="Downloader", args=(data, path))
+    download_thread.start()
 
 class SimpleTokenizer():
     def __init__(self) -> None:
@@ -16,7 +25,9 @@ class SimpleTokenizer():
         pass
 
     def remove_non_ascii(self, text):
-        return text.encode('ascii',errors='ignore').decode()
+        return re.sub(r'''[^ ,.:;"'a-zA-Z0-9]''', '', text)
+
+        # return text.encode('ascii',errors='ignore').decode()
 
     def read_file(self, path):
         corpus =[]
@@ -61,7 +72,7 @@ class BPETokenizer(SimpleTokenizer):
         self.vocabulary = []
         self.splitted_word = {}
         self.word_freq = {}
-        # self.start_time = time.time()
+        self.start_time = time.time()
         # del self.tokens
         # self.training()
 
@@ -194,7 +205,7 @@ class BPETokenizer(SimpleTokenizer):
         # self.vocabulary = self.get_alphabets()
         
     def train(self, merges=100):
-        # points = [time.time()-self.start_time]
+        points = [0,time.time()-self.start_time]
         for i in range(merges):
             pair_frequencies = self.calculate_pair_freq()
             if len(pair_frequencies) ==0:
@@ -206,9 +217,12 @@ class BPETokenizer(SimpleTokenizer):
             self.merges_best_pair(best_pair)
             # print(best_pair,i)
             print(i)
-            # points.append(time.time()-self.start_time)
+            points.append(time.time()-self.start_time)
+            if (i+1)%100==0:
+                save_checkpoint(data=self.merges, path=f'./bpe/BPE_{str(i).zfill(3)}.pkl')
         
-        self.save(self.vocabulary, './output.dict')
+        # self.save(self.vocabulary, './output.dict')
+        save_checkpoint({'points':points}, './bpe_progress.pkl')
         # del self.splitted_word
         # del self.word_freq
         # # del self.vocabulary
@@ -237,7 +251,6 @@ class BPETokenizer(SimpleTokenizer):
         tokens =  sum(splitted_words, [])
         return tokens
  
-
 class WordPieceTokenizer(SimpleTokenizer):
     def __init__(self) -> None:
         self.merges = {}
@@ -287,8 +300,10 @@ class WordPieceTokenizer(SimpleTokenizer):
         for word in tokens:
             splitted_word[word] = ["$$"+ch for ch in word]
             splitted_word[word][0] = splitted_word[word][0][2:]
-            vocabulary.union(splitted_word[word])
+            vocabulary.update(splitted_word[word])
 
+        vocabulary = list(vocabulary)
+        vocabulary.sort()
         return splitted_word, vocabulary
     
     def get_vocabulary(self):
@@ -369,7 +384,7 @@ class WordPieceTokenizer(SimpleTokenizer):
         # self.vocabulary = self.get_alphabets()
 
     def train(self, k=500):
-        points = [time.time()-self.start_time]
+        points = [0, time.time()-self.start_time]
         for i in range(k):
             score = self.calculate_pair_score()
             if len(score) ==0:
@@ -378,22 +393,24 @@ class WordPieceTokenizer(SimpleTokenizer):
 
             self.merges[best_pair] = best_pair[0] + best_pair[1][2:]
             self.merges_best_pair(best_pair)
-            self.vocabulary.add(self.merges[best_pair])
+            self.vocabulary.append(self.merges[best_pair])
             # print(merges)
             points.append(time.time()-self.start_time)
-
+            if (i+1)%100==0:
+                save_checkpoint({'vocab':self.vocabulary},f'./wpe/WPE_{i}.pkl')
             print(i)
                 
-        self.save(self.vocabulary, './output.dict')
+        self.save(self.vocabulary, './WPE_output.dict')
+        save_checkpoint({'points':points}, './wpe_progress.pkl')
         # del self.splitted_word
         # del self.word_freq
         # del self.vocabulary
-        plt.plot(points)
-        plt.xlabel('#Merges')
-        plt.ylabel('Time(sec)')
-        plt.title('WPE')
-        plt.savefig('./WPE_progress.png')
-        # self.save(self.vocabulary)
+        # plt.plot(points)
+        # plt.xlabel('#Merges')
+        # plt.ylabel('Time(sec)')
+        # plt.title('WPE')
+        # plt.savefig('./WPE_progress.png')
+        self.save(self.vocabulary)
         return
     
     def encode_word(self, word):
@@ -431,20 +448,23 @@ class WordPieceTokenizer(SimpleTokenizer):
             tokens.extend(self.encode_word(word))
         
         return tokens
-# Question 1
-# obj =SimpleTokenizer()
+
+# # Question 1
+# # obj =SimpleTokenizer()
+# # obj.encode('cord19-trec_covid-docs')
+
+# print("BPE started")
 # bpe =BPETokenizer()
-
-
-# obj.encode('cord19-trec_covid-docs')
 # bpe.first_itr(path = 'cord19-trec_covid-docs')
-# bpe.train(merges=1000)
-# start_time = time.time()
-# print(time.time()-start_time)
+# bpe.train(merges=2000)
+# # start_time = time.time()
+# # print(time.time()-start_time)
 
+print("WPE started")
 wpe = WordPieceTokenizer()
 wpe.first_itr('cord19-trec_covid-docs')
-wpe.train(150)
+wpe.train(2000)
 
 
-# if __name__=="__main__":
+# # if __name__=="__main__":
+

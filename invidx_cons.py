@@ -1,4 +1,4 @@
-from .dict_cons import SimpleTokenizer, BPETokenizer, WordPieceTokenizer
+from dict_cons import SimpleTokenizer, BPETokenizer, WordPieceTokenizer
 from collections import Counter,defaultdict
 import json
 import pickle
@@ -43,8 +43,9 @@ class InvertedIndex():
             for doc_id, token_freq in doc_list:
                 doc_index = self.doc_to_index[doc_id]
                 tf = self.get_TF(token_freq)
-                self.normalization_value[doc_index] += np.square(tf*IDF)
-                posting_dict[doc_index] = tf
+                tf_idf = tf*IDF
+                self.normalization_value[doc_index] += np.square(tf_idf)
+                posting_dict[doc_index] = tf_idf
 
             self.inverted_index[token] = posting_dict
         
@@ -56,7 +57,7 @@ class InvertedIndex():
         doc_ids = set()
         with open(path,'r', encoding='utf-8') as file:
             for doc in file:
-                print(i)
+                # print(i)
                 i+=1
                 doc = json.loads(doc.strip())
                 if doc['doc_id'] in doc_ids:
@@ -107,19 +108,33 @@ class InvertedIndex():
             loaded_dict = pickle.load(f)
         return loaded_dict
 
+
+
 if __name__=="__main__":
     path = sys.argv[1]
-    index_name = sys.argv[2]
+    indexFile_name = sys.argv[2]
     tokenizer_choice = sys.argv[3]
-    # print(sys.argv)
+    obj = InvertedIndex()
+    # # print(sys.argv)
     if tokenizer_choice=='0':
         encoder = SimpleTokenizer()
-        encoder.encode(path)
+        # encoder.encode(path)
+        obj.construct_index(encoder=encoder,
+                            path = path,
+                            output_name=indexFile_name)
+
     elif tokenizer_choice == '1':
         encoder = BPETokenizer()
         encoder.first_itr(path)
-        encoder.train(500)
+        encoder.train(100)
+        obj.construct_index(encoder=encoder,
+                            path = path,
+                            output_name=indexFile_name)
     elif tokenizer_choice == '2':
         encoder = WordPieceTokenizer()
         encoder.first_itr(path)
-        encoder.train(300)
+        encoder.train(100)
+        obj.construct_index(encoder=encoder,
+                            path = path,
+                            output_name=indexFile_name)
+

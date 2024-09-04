@@ -17,7 +17,9 @@ class SimpleTokenizer():
         pass
 
     def remove_non_ascii(self, text):
-        return text.encode('ascii',errors='ignore').decode()
+        return re.sub(r'''[^ ,.:;"'a-zA-Z0-9]''', '', text)
+        # return re.sub('[\W_]', '', text)
+        # return text.encode('ascii',errors='ignore').decode()
 
     def read_file(self, path):
         corpus =[]
@@ -36,7 +38,7 @@ class SimpleTokenizer():
             all_tokens.extend(tokens)
         
         return all_tokens
-    
+
     def save(self, data , path='./output.dict'):
         with open(path,'w') as file:
             file.write('\n'.join(data))
@@ -288,8 +290,10 @@ class WordPieceTokenizer(SimpleTokenizer):
         for word in tokens:
             splitted_word[word] = ["$$"+ch for ch in word]
             splitted_word[word][0] = splitted_word[word][0][2:]
-            vocabulary.union(splitted_word[word])
+            vocabulary.update(splitted_word[word])
 
+        vocabulary = list(vocabulary)
+        vocabulary.sort()
         return splitted_word, vocabulary
     
     def get_vocabulary(self):
@@ -379,7 +383,7 @@ class WordPieceTokenizer(SimpleTokenizer):
 
             self.merges[best_pair] = best_pair[0] + best_pair[1][2:]
             self.merges_best_pair(best_pair)
-            self.vocabulary.add(self.merges[best_pair])
+            self.vocabulary.append(self.merges[best_pair])
             # print(merges)
             print(i)
         self.save(list(self.vocabulary))
@@ -410,7 +414,7 @@ class WordPieceTokenizer(SimpleTokenizer):
         for word in all_words:
             tokens.extend(self.encode_word(word))
         
-        return all_words
+        return tokens
 
     def encode_text(self, text):
         words = self.seperate_words(text)
@@ -431,8 +435,8 @@ if __name__=="__main__":
     elif tokenizer_choice == '1':
         encoder = BPETokenizer()
         encoder.first_itr(path)
-        encoder.train(100)
+        encoder.train(200)
     elif tokenizer_choice == '2':
         encoder = WordPieceTokenizer()
         encoder.first_itr(path)
-        encoder.train(100)
+        encoder.train(50)
