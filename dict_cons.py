@@ -18,7 +18,6 @@ class SimpleTokenizer():
 
     def remove_non_ascii(self, text):
         return re.sub(r'''[^ ,.:;"'a-zA-Z0-9]''', '', text)
-        # return re.sub('[\W_]', '', text)
         # return text.encode('ascii',errors='ignore').decode()
 
     def read_file(self, path):
@@ -30,7 +29,7 @@ class SimpleTokenizer():
                 corpus.append(self.remove_non_ascii(text))
         return corpus
 
-    def seperate_words(self, corpus):
+    def seperate_words_list(self, corpus):
         all_tokens=[]
         for doc in corpus:
             tokens = re.split(PATTERN, doc)
@@ -38,6 +37,13 @@ class SimpleTokenizer():
             all_tokens.extend(tokens)
         
         return all_tokens
+    
+    def seperate_words(self, string):
+        all_tokens=[]
+
+        tokens = re.split(PATTERN, string)
+        tokens = [token for token in tokens if token]        
+        return tokens
 
     def save(self, data , path='./output.dict'):
         with open(path,'w') as file:
@@ -45,11 +51,11 @@ class SimpleTokenizer():
 
     def encode(self, path='./test'):
         corpus = self.read_file(path)
-        tokens = self.seperate_words(corpus)
+        tokens = self.seperate_words_list(corpus)
         self.save(list(set(tokens)))
     
     def encode_text(self,text):
-        tokens = self.seperate_words([text])
+        tokens = self.seperate_words_list([text])
         return tokens
     
 class BPETokenizer(SimpleTokenizer):
@@ -58,11 +64,11 @@ class BPETokenizer(SimpleTokenizer):
 
 
         # self.word_freq = self.calc_freq(tokens)
-        # self.splitted_word = self.split_words(self.word_freq)
+        # self.splitted_words = self.split_words(self.word_freq)
         # self.vocabulary = self.get_alphabets()
         self.merges = {}
         self.vocabulary = []
-        self.splitted_word = {}
+        self.splitted_words = {}
         self.word_freq = {}
         self.start_time = time.time()
         # del self.tokens
@@ -107,25 +113,25 @@ class BPETokenizer(SimpleTokenizer):
         # return token_count
     
     def split_words(self, words):
-        splitted_word = {}
+        splitted_words = {}
         vocabulary =set()
 
         for word in words:
-            splitted_word[word] = list(word)
-            vocabulary.update(splitted_word[word])
+            splitted_words[word] = list(word)
+            vocabulary.update(splitted_words[word])
 
         vocabulary = list(vocabulary)
         vocabulary.sort()
         
-        return splitted_word, vocabulary
+        return splitted_words, vocabulary
        
     def split_words_query(self, words):
-        splitted_word = []
+        splitted_words = []
 
         for word in words:
-            splitted_word.append([ch for ch in word])
+            splitted_words.append(list(word))
 
-        return splitted_word
+        return splitted_words
 
     def get_alphabets(self):
         # vocabulary = []
@@ -135,8 +141,8 @@ class BPETokenizer(SimpleTokenizer):
         #             vocabulary.append(letter)
 
         vocabulary =set()
-        for word in self.splitted_word.keys():
-            vocabulary.update(self.splitted_word[word])
+        for word in self.splitted_words.keys():
+            vocabulary.update(self.splitted_words[word])
 
         vocabulary = list(vocabulary)
         vocabulary.sort()
@@ -147,8 +153,8 @@ class BPETokenizer(SimpleTokenizer):
         
         # c = Counter(zip(seq, seq[1:]))
         for word in self.word_freq.keys():
-        # for word, charaters in self.splitted_word.items():
-            charaters = self.splitted_word[word]
+        # for word, charaters in self.splitted_words.items():
+            charaters = self.splitted_words[word]
             # pair_count.update(zip(charaters, charaters[1:])*self.word_freq[word])
             n = len(charaters)
 
@@ -167,9 +173,9 @@ class BPETokenizer(SimpleTokenizer):
     
     def merges_best_pair(self, best_pair):
 
-        for word in self.splitted_word.keys():
+        for word in self.splitted_words.keys():
             # n=len(split)
-            split = self.splitted_word[word]
+            split = self.splitted_words[word]
             if len(split)==1:
                 continue
             
@@ -182,7 +188,7 @@ class BPETokenizer(SimpleTokenizer):
                 
                 i+=1
             
-            # self.splitted_word[word] = split
+            # self.splitted_words[word] = split
         
         return 1
     
@@ -193,11 +199,11 @@ class BPETokenizer(SimpleTokenizer):
         words = self.read_file(path)
 
         self.word_freq = self.calc_freq(words)
-        self.splitted_word, self.vocabulary = self.split_words(self.word_freq.keys())
+        self.splitted_words, self.vocabulary = self.split_words(self.word_freq.keys())
         # self.vocabulary = self.get_alphabets()
         
     def train(self, merges=100):
-        points = [time.time()-self.start_time]
+        # points = [time.time()-self.start_time]
         for i in range(merges):
             pair_frequencies = self.calculate_pair_freq()
             if len(pair_frequencies) ==0:
@@ -208,11 +214,12 @@ class BPETokenizer(SimpleTokenizer):
             self.vocabulary.append(self.merges[best_pair])
             self.merges_best_pair(best_pair)
             # print(best_pair,i)
-            print(i)
-            points.append(time.time()-self.start_time)
+            if (i+1)%10==0:
+                print(i)
+            # points.append(time.time()-self.start_time)
         
         self.save(self.vocabulary, './output.dict')
-        # del self.splitted_word
+        # del self.splitted_words
         # del self.word_freq
         # del self.vocabulary
         # plt.plot(points)
@@ -224,7 +231,6 @@ class BPETokenizer(SimpleTokenizer):
     
     def encode_text(self, text):
         words = self.seperate_words(text)
-        words = self.add_end_of_word(words)
         splitted_words = self.split_words_query(list(set(words)))
         n=len(splitted_words)
         for pair in self.merges.keys():
@@ -239,6 +245,23 @@ class BPETokenizer(SimpleTokenizer):
         
         tokens =  sum(splitted_words, [])
         return tokens
+    
+    def encode_words(self, words):
+        splitted_words,_ = self.split_words(list(set(words)))
+        n=len(splitted_words)
+        for pair in self.merges.keys():
+            for word in splitted_words.keys():
+                split= splitted_words[word]
+                j=0
+                while j < len(split)-1:
+                    if split[j] == pair[0] and split[j+1] == pair[1]:
+                        split = split[:j] + [self.merges[pair]] + split[j+2:]
+                    j+=1
+                splitted_words[word]=split
+        
+        # tokens =  sum(splitted_words, [])
+        return splitted_words
+        
  
 
 class WordPieceTokenizer(SimpleTokenizer):
@@ -285,16 +308,16 @@ class WordPieceTokenizer(SimpleTokenizer):
         return tokens
     
     def split_words(self, tokens):
-        splitted_word = {}
+        splitted_words = {}
         vocabulary = set()
         for word in tokens:
-            splitted_word[word] = ["$$"+ch for ch in word]
-            splitted_word[word][0] = splitted_word[word][0][2:]
-            vocabulary.update(splitted_word[word])
+            splitted_words[word] = ["$$"+ch for ch in word]
+            splitted_words[word][0] = splitted_words[word][0][2:]
+            vocabulary.update(splitted_words[word])
 
         vocabulary = list(vocabulary)
         vocabulary.sort()
-        return splitted_word, vocabulary
+        return splitted_words, vocabulary
     
     def get_vocabulary(self):
         vocabulary = []
@@ -373,7 +396,7 @@ class WordPieceTokenizer(SimpleTokenizer):
         self.splitted_words, self.vocabulary = self.split_words(self.word_freq.keys())
         # self.vocabulary = self.get_alphabets()
 
-    def train(self, k=500):
+    def train(self, k=50):
 
         for i in range(k):
             score = self.calculate_pair_score()
@@ -385,7 +408,8 @@ class WordPieceTokenizer(SimpleTokenizer):
             self.merges_best_pair(best_pair)
             self.vocabulary.append(self.merges[best_pair])
             # print(merges)
-            print(i)
+            if (i+1)%10==0:
+                print(i)
         self.save(list(self.vocabulary))
         return
     
@@ -424,6 +448,15 @@ class WordPieceTokenizer(SimpleTokenizer):
             tokens.extend(self.encode_word(word))
         
         return tokens
+    
+    def encode_words(self, words):
+        # words = self.seperate_words(text)
+        word_token = {}
+        for word in words:
+            word_token[word] = self.encode_word(word)
+            # tokens.extend(self.encode_word(word))
+        
+        return word_token
 
 if __name__=="__main__":
     path = sys.argv[1]
@@ -435,8 +468,8 @@ if __name__=="__main__":
     elif tokenizer_choice == '1':
         encoder = BPETokenizer()
         encoder.first_itr(path)
-        encoder.train(200)
+        encoder.train(160)
     elif tokenizer_choice == '2':
         encoder = WordPieceTokenizer()
         encoder.first_itr(path)
-        encoder.train(50)
+        encoder.train(100)

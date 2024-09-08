@@ -5,7 +5,7 @@ import pickle
 import sys
 import pickle
 import numpy as np
-
+import time
 class InvertedIndex():
     def __init__(self) -> None:
         self.inverted_index = defaultdict(lambda: [])
@@ -44,6 +44,8 @@ class InvertedIndex():
                 doc_index = self.doc_to_index[doc_id]
                 tf = self.get_TF(token_freq)
                 tf_idf = tf*IDF
+                if tf_idf==0:
+                    print(token, doc_id,tf,IDF)
                 self.normalization_value[doc_index] += np.square(tf_idf)
                 posting_dict[doc_index] = tf_idf
 
@@ -51,7 +53,7 @@ class InvertedIndex():
         
         self.normalization_value = np.sqrt(self.normalization_value)
 
-    def construct_index(self, encoder, path='test', output_name = 'indexfile'):
+    def construct_index_simple_tokenizer(self, encoder, path='test', output_name = 'indexfile'):
         doc_count = Counter()
         i=0
         doc_ids = set()
@@ -77,7 +79,7 @@ class InvertedIndex():
         
         encoder.save(self.inverted_index.keys(), f'./{output_name}.dict')
         data = {
-                'doc_to_index': self.doc_to_index, 
+                # 'doc_to_index': self.doc_to_index, 
                 'inverted_index': dict(self.inverted_index),
                 'index_to_doc': self.index_to_doc,
                 'number_docs': self.number_docs,
@@ -86,19 +88,83 @@ class InvertedIndex():
              }
         data['tokenizer']=0
         
-        if type(encoder)!=SimpleTokenizer:
-            if type(encoder)!=BPETokenizer:
-                data['tokenizer']=1
-                data['merges'] = encoder.merges
+        self.save_binary(data,path = f'./{output_name}.idx')
 
-            else:
-                data['tokenizer']=2
-                data['vocabulary'] = encoder.vocabulary
+    def construct_index(self, encoder, path='test', output_name = 'indexfile'):
+        doc_count = Counter()
+        i=0
+        doc_ids = set()
+        start_time= time.time()
+        all_words = []
+        doc_word ={}
+        word_token = {}
+        with open(path,'r', encoding='utf-8') as file:
+            for doc in file:
+                # if i%10000==0:
+                #     print(i, (time.time()-start_time)/(i+1))
+                # i+=1
+                doc = json.loads(doc.strip())
+                if doc['doc_id'] in doc_ids:
+                    continue
+                doc_ids.add(doc['doc_id'])
+                text = doc['title'] +' ' + doc['abstract']
+                text = encoder.remove_non_ascii(text)
+                words = encoder.seperate_words(text)
+                doc_word[doc['doc_id']] = words
+                all_words.extend(words)
+        
+        print('-----all words read-----', time.time()-start_time)
+        start_time= time.time()
+        word_token = encoder.splitted_words
+
+        word_token.update(encoder.encode_words(set(all_words)-set(word_token.keys())))
+        print('-----all words tokenized-----',time.time()-start_time)
+        start_time= time.time()
+        i=0
+        for doc_id in doc_word.keys():
+            # if i%10000==0:
+            #     print(i, (time.time()-start_time)/(i+1))
+            # i+=1
+            words = doc_word[doc_id]
+            tokens=[]
+            for word in doc_word[doc_id]:
+                tokens.extend(word_token[word])
+            token_freq = Counter(tokens)
+            tokens = set(tokens)
+            doc_count[doc_id]+=len(token_freq.keys())
+            for token in tokens:
+                self.inverted_index[token].append((doc_id,token_freq[token]))
+        print('-----inverted_index_created-----',time.time()-start_time)
+        start_time= time.time()
+
+        self.numerize_docid(doc_count)
+        self.populate_variables()
+        print('-----calculating variables-----',time.time()-start_time)
+        
+        encoder.save(self.inverted_index.keys(), f'./{output_name}.dict')
+        data = {
+                # 'doc_to_index': self.doc_to_index, 
+                'inverted_index': dict(self.inverted_index),
+                'index_to_doc': self.index_to_doc,
+                'number_docs': self.number_docs,
+                'IDF': self.IDF,
+                'normalization_value': self.normalization_value
+             }
+        data['tokenizer']=0
+        
+        if type(encoder)==BPETokenizer:
+            data['tokenizer']=1
+            data['merges'] = encoder.merges
+
+        else:
+            data['tokenizer']=2
+            data['vocabulary'] = encoder.vocabulary
 
             # data['merges'] = encoder.merges
             # data['vocabulary'] = encoder.vocabulary
         self.save_binary(data,path = f'./{output_name}.idx')
-         
+    
+
     def save_binary(self, data, path='indexfile.idx'):
         with open(path, 'wb') as f:
             pickle.dump(data, f)
@@ -116,24 +182,28 @@ if __name__=="__main__":
     tokenizer_choice = sys.argv[3]
     obj = InvertedIndex()
     # # print(sys.argv)
+    start_time = time.time()
     if tokenizer_choice=='0':
+        print("Simple Tokenizer selected")
         encoder = SimpleTokenizer()
         # encoder.encode(path)
-        obj.construct_index(encoder=encoder,
+        obj.construct_index_simple_tokenizer(encoder=encoder,
                             path = path,
                             output_name=indexFile_name)
 
     elif tokenizer_choice == '1':
         encoder = BPETokenizer()
         encoder.first_itr(path)
-        encoder.train(100)
+        encoder.train(900)
+        print('-------- Encoder trained -------',time.time()-start_time)
         obj.construct_index(encoder=encoder,
                             path = path,
                             output_name=indexFile_name)
     elif tokenizer_choice == '2':
         encoder = WordPieceTokenizer()
         encoder.first_itr(path)
-        encoder.train(100)
+        encoder.train(600)
+        print('-------- Encoder trained -------',time.time()-start_time)
         obj.construct_index(encoder=encoder,
                             path = path,
                             output_name=indexFile_name)

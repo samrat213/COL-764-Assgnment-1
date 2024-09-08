@@ -8,5 +8,12 @@ fi
 # Assign arguments to variables
 arg1=$1
 arg2=$2
+
+current_date_time="`date "+%Y-%m-%d %H:%M:%S"`";
+echo $current_date_time;
+
 python ./dict_cons.py $1 $2
+
+current_date_time="`date "+%Y-%m-%d %H:%M:%S"`";
+echo $current_date_time;
 # bash dictcons.sh cord19-trec_covid-docs 1

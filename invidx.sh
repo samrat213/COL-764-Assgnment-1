@@ -9,5 +9,12 @@ fi
 arg1=$1
 arg2=$2
 arg3=$3
+
+current_date_time="`date "+%Y-%m-%d %H:%M:%S"`";
+echo $current_date_time;
+
 python invidx_cons.py $1 $2 $3
+
+current_date_time="`date "+%Y-%m-%d %H:%M:%S"`";
+echo $current_date_time;
 #bash invidx.sh cord19-trec_covid-docs simple 0
